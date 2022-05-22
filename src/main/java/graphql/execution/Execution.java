@@ -67,6 +67,7 @@ public class Execution {
 
         Map<String, Object> coercedVariables;
         try {
+            valuesResolver.setCodeRegistry(graphQLSchema.getCodeRegistry());
             coercedVariables = valuesResolver.coerceVariableValues(graphQLSchema, variableDefinitions, inputVariables);
         } catch (RuntimeException rte) {
             if (rte instanceof GraphQLError) {

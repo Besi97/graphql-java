@@ -22,6 +22,7 @@ import graphql.language.VariableReference;
 import graphql.normalized.NormalizedInputValue;
 import graphql.schema.CoercingParseLiteralException;
 import graphql.schema.CoercingParseValueException;
+import graphql.schema.GraphQLAppliedDirective;
 import graphql.schema.GraphQLArgument;
 import graphql.schema.GraphQLCodeRegistry;
 import graphql.schema.GraphQLEnumType;
@@ -50,8 +51,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static graphql.Assert.assertShouldNeverHappen;
-import static graphql.Assert.assertTrue;
+import static graphql.Assert.*;
 import static graphql.collect.ImmutableKit.emptyList;
 import static graphql.collect.ImmutableKit.emptyMap;
 import static graphql.collect.ImmutableKit.map;
@@ -73,6 +73,16 @@ public class ValuesResolver {
     public enum ValueMode {
         LITERAL,
         NORMALIZED
+    }
+
+    private GraphQLCodeRegistry codeRegistry;
+
+    public ValuesResolver() {
+        codeRegistry = null;
+    }
+
+    public void setCodeRegistry(GraphQLCodeRegistry codeRegistry) {
+        this.codeRegistry = codeRegistry;
     }
 
     /**
@@ -562,8 +572,13 @@ public class ValuesResolver {
                 if (value == null) {
                     coercedValues.put(fieldName, null);
                 } else {
-                    value = externalValueToInternalValue(fieldVisibility,
-                            fieldType, value);
+                    value = externalValueToInternalValue(fieldVisibility, fieldType, value);
+                    if (codeRegistry != null) {
+                        for (GraphQLAppliedDirective directive : inputFieldDefinition.getAppliedDirectives()) {
+                            value = codeRegistry.getInputFieldTransformer(directive.getName())
+                                    .transform(directive, inputFieldDefinition, value);
+                        }
+                    }
                     coercedValues.put(fieldName, value);
                 }
             }

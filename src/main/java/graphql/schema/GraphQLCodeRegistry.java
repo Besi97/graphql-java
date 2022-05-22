@@ -8,6 +8,7 @@ import graphql.schema.visibility.GraphqlFieldVisibility;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
 import static graphql.Assert.assertNotNull;
@@ -31,6 +32,7 @@ public class GraphQLCodeRegistry {
     private final Map<FieldCoordinates, DataFetcherFactory<?>> dataFetcherMap;
     private final Map<String, DataFetcherFactory<?>> systemDataFetcherMap;
     private final Map<String, TypeResolver> typeResolverMap;
+    private final Map<String, InputFieldDirectiveTransformer> inputFieldDirectivesTransformers;
     private final GraphqlFieldVisibility fieldVisibility;
     private final DataFetcherFactory<?> defaultDataFetcherFactory;
 
@@ -38,6 +40,7 @@ public class GraphQLCodeRegistry {
         this.dataFetcherMap = builder.dataFetcherMap;
         this.systemDataFetcherMap = builder.systemDataFetcherMap;
         this.typeResolverMap = builder.typeResolverMap;
+        this.inputFieldDirectivesTransformers = builder.inputFieldDirectivesTransformers;
         this.fieldVisibility = builder.fieldVisibility;
         this.defaultDataFetcherFactory = builder.defaultDataFetcherFactory;
     }
@@ -152,6 +155,14 @@ public class GraphQLCodeRegistry {
         return assertNotNull(typeResolver, () -> "There must be a type resolver for union " + parentType.getName());
     }
 
+    public InputFieldDirectiveTransformer getInputFieldTransformer(String directiveName) {
+        if (directiveName == null || !inputFieldDirectivesTransformers.containsKey(directiveName)) {
+            return (ignored, inputField, input) -> input;
+        } else {
+            return inputFieldDirectivesTransformers.get(directiveName);
+        }
+    }
+
     /**
      * This helps you transform the current {@link graphql.schema.GraphQLCodeRegistry} object into another one by starting a builder with all
      * the current values and allows you to transform it how you want.
@@ -188,6 +199,7 @@ public class GraphQLCodeRegistry {
         private final Map<FieldCoordinates, DataFetcherFactory<?>> dataFetcherMap = new LinkedHashMap<>();
         private final Map<String, DataFetcherFactory<?>> systemDataFetcherMap = new LinkedHashMap<>();
         private final Map<String, TypeResolver> typeResolverMap = new HashMap<>();
+        private final Map<String, InputFieldDirectiveTransformer> inputFieldDirectivesTransformers = new HashMap<>();
         private GraphqlFieldVisibility fieldVisibility = DEFAULT_FIELD_VISIBILITY;
         private DataFetcherFactory<?> defaultDataFetcherFactory = env -> PropertyDataFetcher.fetching(env.getFieldDefinition().getName());
         private boolean changed = false;
@@ -200,6 +212,7 @@ public class GraphQLCodeRegistry {
             this.dataFetcherMap.putAll(codeRegistry.dataFetcherMap);
             this.typeResolverMap.putAll(codeRegistry.typeResolverMap);
             this.fieldVisibility = codeRegistry.fieldVisibility;
+            this.inputFieldDirectivesTransformers.putAll(codeRegistry.inputFieldDirectivesTransformers);
             this.defaultDataFetcherFactory = codeRegistry.defaultDataFetcherFactory;
         }
 
@@ -458,6 +471,20 @@ public class GraphQLCodeRegistry {
         public Builder typeResolvers(GraphQLCodeRegistry codeRegistry) {
             this.typeResolverMap.putAll(codeRegistry.typeResolverMap);
             return markChanged(!codeRegistry.typeResolverMap.isEmpty());
+        }
+
+        public Builder inputFieldTransformer(String directiveName, InputFieldDirectiveTransformer transformer) {
+            assertNotNull(directiveName);
+            assertNotNull(transformer);
+
+            this.inputFieldDirectivesTransformers.put(directiveName, (directive, inputField, value) -> {
+                try {
+                    return transformer.transform(directive, inputField, value);
+                } catch (Exception e) {
+                    throw new CoercingParseValueException("Exception while directive getting applied on input field: " + e.getMessage(), e);
+                }
+            });
+            return markChanged();
         }
 
         public Builder fieldVisibility(GraphqlFieldVisibility fieldVisibility) {
